@@ -1,9 +1,10 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     // Standard target options allows the person running `zig build` to choose
     // what target to build for. Here we do not override the defaults, which
     // means any target is allowed, and the default is native. Other options
@@ -21,6 +22,21 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    if (std.Target.isDarwin(builtin.target)) {
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+
+        const env_map = try arena.allocator().create(std.process.EnvMap);
+        env_map.* = try std.process.getEnvMap(arena.allocator());
+
+        const path = env_map.get("APPLE_SDK_ROOT") orelse {
+            std.debug.print("APPLE_SDK_ROOT not present in the env.", .{});
+            return error.EnvNotPresent;
+        };
+
+        exe.addSystemFrameworkPath(.{ .cwd_relative = path });
+    }
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
